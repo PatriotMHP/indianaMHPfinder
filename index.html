@@ -640,6 +640,16 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
   tbody td{padding:8px 8px;max-width:150px;}
 }
 
+.sales-progress-fill.sale{background:linear-gradient(90deg,rgba(127,166,107,.5),var(--green));}
+.sales-progress-legend{
+  display:flex;gap:14px;margin-top:6px;
+  font-family:var(--font-mono);font-size:9.5px;color:var(--paper-faint);
+}
+.sales-progress-legend span{display:flex;align-items:center;gap:4px;}
+.lg{width:8px;height:3px;border-radius:2px;display:inline-block;}
+.lg-parcel{background:var(--brass);}
+.lg-sale{background:var(--green);}
+
 </style>
 </head>
 <body>
@@ -781,7 +791,7 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
         <div class="sales-import-head">
           <div>
             <div class="sales-import-title">Import sale data</div>
-            <div class="sales-import-sub">CSV columns: facility_code, Last_Sale_Date, Last_Sale_Price, Parcel_ID, Assessed_Value</div>
+            <div class="sales-import-sub">Accepts either script output &mdash; parcel match (script 4) or sale pull (script 3). Rows join on facility_code.</div>
           </div>
           <button class="btn btn-brass btn-sm" id="importSaleCsvBtn">↑ Upload CSV</button>
           <input type="file" id="saleCsvFile" accept=".csv" class="hidden">
@@ -795,6 +805,8 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
           <span id="salesProgressText">0 / 1056 parks researched</span>
         </div>
         <div class="sales-progress-bar"><div class="sales-progress-fill" id="salesProgressFill" style="width:0%"></div></div>
+        <div class="sales-progress-legend"><span><i class="lg lg-parcel"></i>parcel IDs</span><span><i class="lg lg-sale"></i>sale records</span></div>
+        <div class="sales-progress-bar" style="margin-top:5px"><div class="sales-progress-fill sale" id="salesProgressFill2" style="width:0%"></div></div>
       </div>
 
       <div class="sales-tip-box">
@@ -1858,18 +1870,24 @@ function showToast(msg){
 /* ---- Research panel ---- */
 function renderSalesPanel(){
   const P=STATE.parks, total=P.length;
-  const researched=P.filter(function(p){return p.last_sale_date;}).length;
-  const pct=total?Math.round((researched/total)*100):0;
-  document.getElementById('salesProgressText').textContent=researched+' / '+total+' parks researched ('+pct+'%)';
-  document.getElementById('salesProgressFill').style.width=pct+'%';
+  const withParcel=P.filter(function(p){return p.parcel_id;}).length;
+  const withSale  =P.filter(function(p){return p.last_sale_date;}).length;
+  const pPct=total?Math.round((withParcel/total)*100):0;
+  const sPct=total?Math.round((withSale/total)*100):0;
+  document.getElementById('salesProgressText').textContent=
+    withParcel+' parcel IDs ('+pPct+'%)  ·  '+withSale+' sale records ('+sPct+'%)';
+  document.getElementById('salesProgressFill').style.width=pPct+'%';
+  const sf=document.getElementById('salesProgressFill2');
+  if(sf) sf.style.width=sPct+'%';
   document.getElementById('countyLinksList').innerHTML=COUNTY_LINKS.map(function(entry){
     const county=entry[0], platform=entry[1], url=entry[2];
     const cp=P.filter(function(p){return p.county===county;});
     const cr=cp.filter(function(p){return p.last_sale_date;}).length;
+    const cparc=cp.filter(function(p){return p.parcel_id;}).length;
     return '<div class="county-link-row">'+
       '<div class="county-link-info">'+
         '<div class="county-link-name">'+escHtml(county)+' Co.</div>'+
-        '<div class="county-link-meta">'+cr+'/'+cp.length+' researched · '+escHtml(platform)+'</div>'+
+        '<div class="county-link-meta">'+cparc+'/'+cp.length+' parcels · '+cr+' sales · '+escHtml(platform)+'</div>'+
       '</div>'+
       '<a href="'+escAttr(url)+'" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm">Open →</a>'+
     '</div>';
