@@ -650,6 +650,23 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
 .lg-parcel{background:var(--brass);}
 .lg-sale{background:var(--green);}
 
+/* parcel ID cell — click to copy, confidence-coded */
+.parcel-cell{white-space:nowrap;}
+.parcel-id{
+  cursor:pointer;border-bottom:1px dotted var(--hairline);
+  padding:1px 0;transition:color .12s,border-color .12s;
+  font-size:11px;
+}
+.parcel-id:hover{color:var(--brass);border-bottom-color:var(--brass);}
+.parcel-id::before{
+  content:'';display:inline-block;width:5px;height:5px;border-radius:50%;
+  margin-right:5px;vertical-align:middle;background:var(--slate);
+}
+.parcel-id.conf-high::before{background:var(--green);}
+.parcel-id.conf-medium::before{background:var(--amber);}
+.parcel-id.conf-low::before{background:var(--rust);}
+.parcel-id.copied{color:var(--green);border-bottom-color:var(--green);}
+
 </style>
 </head>
 <body>
@@ -776,7 +793,7 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
             <th data-key="owner_name">Owner <span class="arrow"></span></th>
             <th data-key="owner_phone">Phone <span class="arrow"></span></th>
             <th data-key="next_followup">Follow-up <span class="arrow"></span></th>
-            <th data-key="facility_code">Facility # <span class="arrow"></span></th>
+            <th data-key="parcel_id">Parcel ID <span class="arrow"></span></th>
           </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -965,7 +982,9 @@ const FIELD_SCHEMA = {
   last_sale_date:{d:'',src:'auto'}, last_sale_price:{d:'',src:'auto'},
   years_held:{d:'',src:'calc'}, price_per_lot:{d:'',src:'calc'},
   assessed_value:{d:'',src:'auto'}, assessed_per_lot:{d:'',src:'calc'},
-  parcel_id:{d:'',src:'auto'}, property_class:{d:'',src:'auto'}, match_confidence:{d:'',src:'auto'},
+  parcel_id:{d:'',src:'auto'}, local_parcel_id:{d:'',src:'auto'},
+  property_class:{d:'',src:'auto'}, match_confidence:{d:'',src:'auto'},
+  deed_type:{d:'',src:'auto'}, last_sale_seller:{d:'',src:'auto'}, last_sale_buyer:{d:'',src:'auto'},
   tax_delinquent:{d:'',src:'auto'},
   asking_price:{d:'',src:'call'}, est_value:{d:'',src:'call'},
 
@@ -994,7 +1013,7 @@ const FIELD_SCHEMA = {
   last_updated:{d:'',src:'auto'},
 
   // --- scoring / provenance ---
-  sf_score:{d:0,src:'calc'},
+  sf_score:{d:0,src:'calc'}, tenure_note:{d:'',src:'calc'},
   verified:{d:[],src:'call'}                 // list of field keys user has confirmed
 };
 
@@ -1029,8 +1048,12 @@ function yearsSince(dateStr){
 }
 
 function computeDerived(p, allParks){
-  // years held
+  // years held. A quitclaim is usually an internal/family transfer, not a
+  // true arm's-length sale — don't let it reset the tenure clock.
   p.years_held = yearsSince(p.last_sale_date) ?? '';
+  if(p.years_held !== '' && /quit\s*claim/i.test(p.deed_type||'')){
+    p.tenure_note = 'quitclaim — tenure may understate true hold';
+  } else { p.tenure_note = ''; }
 
   // occupancy
   const lots = parseNum(p.pads), occ = parseNum(p.occupied_lots);
@@ -1530,7 +1553,7 @@ function getFilteredParks(){
   });
   out.sort((a,b)=>{
     let av=a[STATE.sortKey], bv=b[STATE.sortKey];
-    if(['pads','sf_score','years_held','last_sale_price','assessed_value'].includes(STATE.sortKey)){
+    if(['pads','sf_score','years_held','last_sale_price','assessed_value'].indexOf(STATE.sortKey)>-1){
       av=parseNum(av); bv=parseNum(bv);
       av = (av===null?-1:av); bv = (bv===null?-1:bv);
     } else { av=(av||'').toString().toLowerCase(); bv=(bv||'').toString().toLowerCase(); }
@@ -1605,12 +1628,25 @@ function renderTable(){
       <td>${escHtml(p.owner_name||p.owner_business||'—')}</td>
       <td class="mono">${p.owner_phone?`<a href="tel:${escAttr(p.owner_phone)}" onclick="event.stopPropagation()">${escHtml(p.owner_phone)}</a>`:'—'}</td>
       <td class="mono">${p.next_followup?escHtml(p.next_followup):'—'}</td>
-      <td class="mono">${escHtml(p.facility_code||'—')}</td>
+      <td class="mono parcel-cell">${p.parcel_id
+        ? `<span class="parcel-id conf-${escAttr(p.match_confidence||'')}" data-copy="${escAttr(p.parcel_id)}" title="${escHtml(p.match_confidence||'')} confidence — click to copy">${escHtml(p.parcel_id)}</span>`
+        : '—'}</td>
     </tr>`;
   }).join('');
 
   tbody.querySelectorAll('tr').forEach(tr=>{
     tr.addEventListener('click',()=>openDetailModal(tr.getAttribute('data-id')));
+  });
+  tbody.querySelectorAll('.parcel-id').forEach(el=>{
+    el.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      const v=el.getAttribute('data-copy');
+      navigator.clipboard.writeText(v).then(function(){
+        showToast('Copied '+v);
+        el.classList.add('copied');
+        setTimeout(function(){ el.classList.remove('copied'); },900);
+      });
+    });
   });
   document.querySelectorAll('thead th[data-key]').forEach(th=>{
     const k=th.getAttribute('data-key');
@@ -1723,11 +1759,14 @@ function openDetailModal(id){
     <div class="field-grid">
       ${fld('f_saledate','Last sale date',p.last_sale_date,'YYYY-MM-DD')}
       ${fld('f_saleprice','Last sale price',p.last_sale_price)}
+      ${fld('f_deedtype','Deed type',p.deed_type,'warranty / quitclaim / limited')}
+      ${ro('Sale parties', p.last_sale_seller||p.last_sale_buyer ? escHtml((p.last_sale_seller||'?')+' &rarr; '+(p.last_sale_buyer||'?')) : '')}
       ${ro('Years held', p.years_held!==''?`<strong style="color:var(--brass)">${p.years_held} years</strong>`:'')}
       ${ro('Price / lot', money(p.price_per_lot))}
       ${fld('f_assessed','Assessed value',p.assessed_value)}
       ${ro('Assessed / lot', money(p.assessed_per_lot))}
-      ${fld('f_parcel','Parcel ID',p.parcel_id)}
+      ${fld('f_parcel','Parcel ID (state)',p.parcel_id)}
+      ${fld('f_localparcel','Parcel ID (county)',p.local_parcel_id)}
       <div class="field"><label>Tax delinquent</label><select id="f_taxdel">${['','yes','no'].map(v=>`<option value="${v}" ${p.tax_delinquent===v?'selected':''}>${v||'— unknown'}</option>`).join('')}</select></div>
       <div class="field"><label>Has mortgage? <span class="tag paid">recorder</span></label><select id="f_hasmtg">${['','yes','no'].map(v=>`<option value="${v}" ${p.has_mortgage===v?'selected':''}>${v||'— unknown'}</option>`).join('')}</select></div>
       ${fld('f_lender','Lender',p.mortgage_lender)}
@@ -1816,6 +1855,7 @@ function saveDetailModal(id){
   p.code_violations=gv('f_violations');
   p.last_sale_date=gv('f_saledate'); p.last_sale_price=gv('f_saleprice');
   p.assessed_value=gv('f_assessed'); p.parcel_id=gv('f_parcel');
+  p.local_parcel_id=gv('f_localparcel'); p.deed_type=gv('f_deedtype');
   p.tax_delinquent=gv('f_taxdel'); p.has_mortgage=gv('f_hasmtg');
   p.mortgage_lender=gv('f_lender'); p.mortgage_amount=gv('f_mtgamt');
   p.legal_filings=gv('f_liens'); p.asking_price=gv('f_asking');
@@ -1901,12 +1941,22 @@ function handleSaleCsv(e){
   reader.onload=function(ev){
     try{
       const rows=parseCsv(ev.target.result);
-      const byId={};
-      STATE.parks.forEach(function(p){ if(p.facility_code) byId[p.facility_code]=p; if(p.id) byId[p.id]=p; });
+      const normPid=function(v){ return String(v||'').replace(/[^0-9A-Za-z]/g,'').toUpperCase(); };
+      const byId={}, byParcel={};
+      STATE.parks.forEach(function(p){
+        if(p.facility_code) byId[p.facility_code]=p;
+        if(p.id) byId[p.id]=p;
+        if(p.parcel_id)       byParcel[normPid(p.parcel_id)]=p;
+        if(p.local_parcel_id) byParcel[normPid(p.local_parcel_id)]=p;
+      });
       let matched=0;
       let gotParcel=0, gotSale=0, mhpClass=0;
       rows.forEach(function(r){
-        const p=byId[r.facility_code||r.Facility_Code||''];
+        let p = byId[r.facility_code||r.Facility_Code||''];
+        if(!p){
+          const pk = r.Parcel_ID||r.parcel_id||r.PARCEL_ID||'';
+          if(pk) p = byParcel[normPid(pk)];
+        }
         if(!p) return;
         // sale-data columns (script 3)
         if(r.Last_Sale_Date||r.last_sale_date){ p.last_sale_date=r.Last_Sale_Date||r.last_sale_date; gotSale++; }
@@ -1919,6 +1969,10 @@ function handleSaleCsv(e){
           if(String(p.property_class).trim()==='415') mhpClass++;
         }
         if(r.Match_Confidence) p.match_confidence=r.Match_Confidence;
+        if(r.Local_Parcel_ID||r.local_parcel_id) p.local_parcel_id=r.Local_Parcel_ID||r.local_parcel_id;
+        if(r.Deed_Type||r.deed_type)   p.deed_type=r.Deed_Type||r.deed_type;
+        if(r.Seller||r.seller)         p.last_sale_seller=r.Seller||r.seller;
+        if(r.Buyer||r.buyer)           p.last_sale_buyer=r.Buyer||r.buyer;
         matched++;
       });
       window.__lastImport={gotParcel:gotParcel,gotSale:gotSale,mhpClass:mhpClass};
