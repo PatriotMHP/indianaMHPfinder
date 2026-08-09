@@ -781,7 +781,7 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
         <div class="sales-import-head">
           <div>
             <div class="sales-import-title">Import sale data</div>
-            <div class="sales-import-sub">CSV columns: facility_code, Last_Sale_Date, Last_Sale_Price, Parcel_ID, Assessed_Value</div>
+            <div class="sales-import-sub">Accepts either script output — parcel pull (script 4) or sale pull (script 3). Matches on facility_code.</div>
           </div>
           <button class="btn btn-brass btn-sm" id="importSaleCsvBtn">↑ Upload CSV</button>
           <input type="file" id="saleCsvFile" accept=".csv" class="hidden">
@@ -953,7 +953,7 @@ const FIELD_SCHEMA = {
   last_sale_date:{d:'',src:'auto'}, last_sale_price:{d:'',src:'auto'},
   years_held:{d:'',src:'calc'}, price_per_lot:{d:'',src:'calc'},
   assessed_value:{d:'',src:'auto'}, assessed_per_lot:{d:'',src:'calc'},
-  parcel_id:{d:'',src:'auto'},
+  parcel_id:{d:'',src:'auto'}, property_class:{d:'',src:'auto'},
   tax_delinquent:{d:'',src:'auto'},
   asking_price:{d:'',src:'call'}, est_value:{d:'',src:'call'},
 
@@ -1886,17 +1886,30 @@ function handleSaleCsv(e){
       const byId={};
       STATE.parks.forEach(function(p){ if(p.facility_code) byId[p.facility_code]=p; if(p.id) byId[p.id]=p; });
       let matched=0;
+      let gotParcel=0, gotSale=0, mhpClass=0;
       rows.forEach(function(r){
         const p=byId[r.facility_code||r.Facility_Code||''];
         if(!p) return;
-        p.last_sale_date  = r.Last_Sale_Date||r.last_sale_date||p.last_sale_date;
-        p.last_sale_price = r.Last_Sale_Price||r.last_sale_price||p.last_sale_price;
-        p.parcel_id       = r.Parcel_ID||r.parcel_id||p.parcel_id;
-        p.assessed_value  = r.Assessed_Value||r.assessed_value||p.assessed_value;
+        // sale-data columns (script 3)
+        if(r.Last_Sale_Date||r.last_sale_date){ p.last_sale_date=r.Last_Sale_Date||r.last_sale_date; gotSale++; }
+        if(r.Last_Sale_Price||r.last_sale_price) p.last_sale_price=r.Last_Sale_Price||r.last_sale_price;
+        if(r.Assessed_Value||r.assessed_value) p.assessed_value=r.Assessed_Value||r.assessed_value;
+        // parcel columns (script 4)
+        if(r.Parcel_ID||r.parcel_id){ p.parcel_id=r.Parcel_ID||r.parcel_id; gotParcel++; }
+        if(r.Property_Class||r.property_class){
+          p.property_class=r.Property_Class||r.property_class;
+          if(['452','453'].indexOf(String(p.property_class).trim())>-1) mhpClass++;
+        }
         matched++;
       });
+      window.__lastImport={gotParcel:gotParcel,gotSale:gotSale,mhpClass:mhpClass};
+      const li=window.__lastImport||{};
+      const bits=['Matched '+matched+' of '+rows.length+' rows'];
+      if(li.gotParcel) bits.push(li.gotParcel+' parcel IDs');
+      if(li.gotSale)   bits.push(li.gotSale+' sale dates');
+      if(li.mhpClass)  bits.push(li.mhpClass+' confirmed class 452/453');
       msg.className='sync-msg ok';
-      msg.textContent='Matched '+matched+' of '+rows.length+' rows. Scores recalculated.';
+      msg.textContent=bits.join(' · ')+'. Scores recalculated.';
       renderAll(); scheduleSave();
     }catch(err){
       msg.className='sync-msg err'; msg.textContent='Error parsing CSV: '+err.message;
