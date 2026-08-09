@@ -781,7 +781,7 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
         <div class="sales-import-head">
           <div>
             <div class="sales-import-title">Import sale data</div>
-            <div class="sales-import-sub">Accepts either script output — parcel pull (script 4) or sale pull (script 3). Matches on facility_code.</div>
+            <div class="sales-import-sub">CSV columns: facility_code, Last_Sale_Date, Last_Sale_Price, Parcel_ID, Assessed_Value</div>
           </div>
           <button class="btn btn-brass btn-sm" id="importSaleCsvBtn">↑ Upload CSV</button>
           <input type="file" id="saleCsvFile" accept=".csv" class="hidden">
@@ -798,7 +798,7 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
       </div>
 
       <div class="sales-tip-box">
-        On Beacon county sites, search <strong>Property Class 452 or 453</strong> to filter to mobile home parks.
+        Indiana DLGF class <strong>415 = Mobile Home Park</strong> (416 camp ground / 419 other commercial housing are common mis-codes). Class 452/453 are service stations and car washes &mdash; not parks.
         Add a <code>facility_code</code> column to any export before uploading so records match correctly.
       </div>
 
@@ -953,7 +953,7 @@ const FIELD_SCHEMA = {
   last_sale_date:{d:'',src:'auto'}, last_sale_price:{d:'',src:'auto'},
   years_held:{d:'',src:'calc'}, price_per_lot:{d:'',src:'calc'},
   assessed_value:{d:'',src:'auto'}, assessed_per_lot:{d:'',src:'calc'},
-  parcel_id:{d:'',src:'auto'}, property_class:{d:'',src:'auto'},
+  parcel_id:{d:'',src:'auto'}, property_class:{d:'',src:'auto'}, match_confidence:{d:'',src:'auto'},
   tax_delinquent:{d:'',src:'auto'},
   asking_price:{d:'',src:'call'}, est_value:{d:'',src:'call'},
 
@@ -1898,8 +1898,9 @@ function handleSaleCsv(e){
         if(r.Parcel_ID||r.parcel_id){ p.parcel_id=r.Parcel_ID||r.parcel_id; gotParcel++; }
         if(r.Property_Class||r.property_class){
           p.property_class=r.Property_Class||r.property_class;
-          if(['452','453'].indexOf(String(p.property_class).trim())>-1) mhpClass++;
+          if(String(p.property_class).trim()==='415') mhpClass++;
         }
+        if(r.Match_Confidence) p.match_confidence=r.Match_Confidence;
         matched++;
       });
       window.__lastImport={gotParcel:gotParcel,gotSale:gotSale,mhpClass:mhpClass};
@@ -1907,7 +1908,7 @@ function handleSaleCsv(e){
       const bits=['Matched '+matched+' of '+rows.length+' rows'];
       if(li.gotParcel) bits.push(li.gotParcel+' parcel IDs');
       if(li.gotSale)   bits.push(li.gotSale+' sale dates');
-      if(li.mhpClass)  bits.push(li.mhpClass+' confirmed class 452/453');
+      if(li.mhpClass)  bits.push(li.mhpClass+' confirmed class 415 (MHP)');
       msg.className='sync-msg ok';
       msg.textContent=bits.join(' · ')+'. Scores recalculated.';
       renderAll(); scheduleSave();
