@@ -679,6 +679,81 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
 .score-bar-row.unknown .sbt{opacity:.25}
 .score-bar-row.unknown .sbv{opacity:.5;font-style:italic}
 .conf-num{font-family:var(--font-mono);font-size:9px;color:var(--paper-faint);margin-left:5px;}
+.log-by{font-family:var(--font-mono);font-size:9px;color:var(--brass);
+  border:1px solid var(--brass-dim);border-radius:2px;padding:0 4px;margin-left:auto;}
+
+/* ==========================================================================
+   Guide modal
+   ========================================================================== */
+.guide-modal .modal{max-width:780px;}
+.guide-body{max-height:74vh;}
+.g-nav{
+  display:flex;flex-wrap:wrap;gap:4px;margin-bottom:18px;
+  border-bottom:1px solid var(--hairline);padding-bottom:12px;
+  position:sticky;top:0;background:var(--ink-panel);z-index:2;
+}
+.g-tab{
+  font-family:var(--font-mono);font-size:10.5px;letter-spacing:.03em;
+  padding:5px 10px;border:1px solid var(--hairline);background:transparent;
+  color:var(--paper-dim);border-radius:3px;cursor:pointer;
+}
+.g-tab:hover{border-color:var(--slate);color:var(--paper);}
+.g-tab.active{background:var(--brass-glow);border-color:var(--brass-dim);color:var(--brass);}
+
+.g-sec h3{
+  font-family:var(--font-serif);font-size:17px;font-weight:600;
+  color:var(--paper);margin-bottom:12px;
+}
+.g-sec p{font-size:13px;color:var(--paper-dim);margin-bottom:12px;line-height:1.65;}
+.g-dim{color:var(--paper-faint);}
+
+.g-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;}
+.g-table th{
+  font-family:var(--font-mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--brass-dim);text-align:left;padding:6px 9px;border-bottom:1px solid var(--hairline);
+}
+.g-table td{
+  padding:8px 9px;border-bottom:1px solid var(--hairline-soft);
+  color:var(--paper-dim);vertical-align:top;line-height:1.55;
+}
+.g-table td:first-child{color:var(--paper);font-weight:600;white-space:nowrap;}
+.g-table td:nth-child(2){font-family:var(--font-mono);color:var(--brass);}
+.g-table strong{color:var(--paper);}
+
+.g-row{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;font-size:12.5px;color:var(--paper-dim);line-height:1.55;}
+.g-row>span:first-child{flex-shrink:0;margin-top:2px;}
+.g-row strong{color:var(--paper);}
+
+.g-steps{margin:0 0 12px 18px;font-size:12.5px;color:var(--paper-dim);line-height:1.7;}
+.g-steps li{margin-bottom:7px;padding-left:4px;}
+.g-steps strong{color:var(--paper);}
+.g-list{margin:0 0 12px 18px;font-size:12.5px;color:var(--paper-dim);line-height:1.7;}
+.g-list li{margin-bottom:8px;padding-left:4px;}
+.g-list strong{color:var(--paper);}
+
+.g-note{
+  border-left:2px solid var(--brass-dim);background:rgba(201,162,75,.06);
+  padding:10px 13px;font-size:12px;color:var(--paper-dim);line-height:1.6;border-radius:0 3px 3px 0;
+}
+.g-note strong{color:var(--brass);}
+.g-sec code{
+  font-family:var(--font-mono);font-size:11px;background:var(--ink);
+  padding:1px 5px;border-radius:2px;color:var(--paper);
+}
+@media (max-width:720px){
+  .g-nav{gap:3px;}
+  .g-tab{font-size:9.5px;padding:4px 7px;}
+  .g-table td:first-child{white-space:normal;}
+}
+
+.g-formula{
+  font-family:var(--font-mono);font-size:11.5px;color:var(--brass);
+  background:var(--ink);border:1px solid var(--hairline);border-radius:3px;
+  padding:10px 13px;margin-bottom:12px;line-height:1.7;
+}
+.g-formula-calc{color:var(--paper-dim);}
+.g-formula-calc strong{color:var(--brass);}
+.g-table td .band{margin-right:0;}
 
 </style>
 </head>
@@ -695,6 +770,7 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
   </div>
   <div class="masthead-actions">
     <div class="sync-status"><span class="sync-dot" id="syncDot"></span><span id="syncLabel">Local only (no sync)</span></div>
+    <button class="btn btn-ghost btn-sm" id="guideBtn">? How to use</button>
     <button class="btn btn-ghost btn-sm" id="exportCsvBtn">Export CSV</button>
     <button class="btn btn-ghost btn-sm" id="syncSetupBtn">Sync setup</button>
     <button class="btn btn-brass btn-sm" id="addParkBtn">+ Add park</button>
@@ -893,6 +969,160 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
   </div>
 </div>
 
+
+<!-- ============================= GUIDE MODAL ============================= -->
+<div class="modal-overlay hidden guide-modal" id="guideModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div><h2>How to use this register</h2>
+      <div class="sub">What the data is, what it isn't, and how to work it</div></div>
+      <button class="modal-close" id="closeGuideBtn">&times;</button>
+    </div>
+    <div class="modal-body guide-body">
+
+      <div class="g-nav" id="guideNav">
+        <button class="g-tab active" data-g="data">The data</button>
+        <button class="g-tab" data-g="read">Reading a row</button>
+        <button class="g-tab" data-g="score">The score</button>
+        <button class="g-tab" data-g="calls">Working calls</button>
+        <button class="g-tab" data-g="team">Two of you</button>
+        <button class="g-tab" data-g="limits">Known gaps</button>
+        <button class="g-tab" data-g="refresh">Refreshing</button>
+      </div>
+
+      <!-- ---------- DATA ---------- -->
+      <section class="g-sec" data-g="data">
+        <h3>Where every field comes from</h3>
+        <table class="g-table">
+          <tr><th>Source</th><th>Gives us</th><th>Refresh</th></tr>
+          <tr><td>IDOH FIMS roster</td><td>All 1,056 licensed parks — name, county, address, lot count, owner, phone, water/sewer, license status</td><td>Monthly, by hand</td></tr>
+          <tr><td>Indiana statewide GIS<br><span class="g-dim">gisdata.in.gov</span></td><td>Parcel ID and DLGF property class. <strong>Class 415 = Mobile Home Park.</strong></td><td>Rarely changes</td></tr>
+          <tr><td>Sales Disclosure Forms<br><span class="g-dim">stats.indiana.edu</span></td><td>Sale date, price, seller financing, land contract, buyer/seller names, and the tax-bill mailing address. <strong>2008 forward only.</strong></td><td>Weekly (Fridays)</td></tr>
+          <tr><td>You and your partner</td><td>Everything else — occupancy, lot rent, asking price, motivation, call outcomes</td><td>As you call</td></tr>
+        </table>
+        <div class="g-note">Every field is public record. Nothing here was purchased, and nothing is proprietary — a competitor could assemble the same list. Your edge is the calling, not the data.</div>
+      </section>
+
+      <!-- ---------- READING A ROW ---------- -->
+      <section class="g-sec hidden" data-g="read">
+        <h3>What a row is telling you</h3>
+        <div class="g-row"><span class="band band-A">A</span><div><strong>Band</strong> — how good a seller-finance prospect this looks like. A is your call list. Sorting by Signal puts all A's on top, then B, then C.</div></div>
+        <div class="g-row"><span class="score-num">69</span><div><strong>Score</strong> — 0&ndash;100, but measured only against the signals we can actually evaluate for this park.</div></div>
+        <div class="g-row"><span class="conf-num">60%</span><div><strong>Confidence</strong> — how much of the picture we have. A high score at low confidence isn't a strong lead, it's an under-researched one. A park can't reach A below 50%.</div></div>
+        <div class="g-row"><span class="sig sig-pre">18y+</span><div>No recorded sale since 2008. Held at least 18 years.</div></div>
+        <div class="g-row"><span class="sig sig-abs">ABS</span><div>Tax bill goes out of state or out of area. Absentee owner.</div></div>
+        <div class="g-row"><span class="sig sig-sf">SF</span><div><strong>The owner bought this park on seller financing or land contract.</strong> They've used the structure before.</div></div>
+        <div class="g-row"><span class="dnc">DNC</span><div>Do not call. Someone marked it — respect it.</div></div>
+        <div class="g-note">A brass bar down the left edge of a row means a follow-up is due.</div>
+      </section>
+
+      <!-- ---------- SCORE ---------- -->
+      <section class="g-sec hidden" data-g="score">
+        <h3>What earns points</h3>
+        <table class="g-table">
+          <tr><th>Signal</th><th>Max</th><th>Why it matters</th></tr>
+          <tr><td>Long tenure</td><td>22</td><td>The strongest predictor. 25+ years scores full. No sale since 2008 counts as 19.</td></tr>
+          <tr><td>Owner age</td><td>18</td><td>Retirement drives the decision to sell. Not free — needs skip trace.</td></tr>
+          <tr><td>Free &amp; clear</td><td>18</td><td><strong>A park with a mortgage usually can't carry paper.</strong> This is the gate on the whole thesis. Needs recorder data.</td></tr>
+          <tr><td>Prior owner-carry</td><td>14</td><td>They already sold or bought this way. No concept to explain.</td></tr>
+          <tr><td>Sub-institutional size</td><td>12</td><td>20&ndash;60 lots. Too small for funds, so no competing bids.</td></tr>
+          <tr><td>Absentee owner</td><td>10</td><td>Managing from out of state gets old.</td></tr>
+          <tr><td>Neglect signals</td><td>10</td><td>Expired license, dissolved entity, delinquent taxes.</td></tr>
+          <tr><td>Private utilities</td><td>6</td><td>Well or septic scares lenders — which is <em>why</em> the owner may need to carry.</td></tr>
+          <tr><td>Individual owner</td><td>4</td><td>Not part of a portfolio.</td></tr>
+        </table>
+        <div class="g-note">Open any park to see the breakdown. Signals we have no data on are greyed out and excluded from the math entirely — they don't count against the park.</div>
+
+        <h3 style="margin-top:26px">How the score is calculated</h3>
+        <p>The score is <strong>not</strong> points out of 100. It is the percentage of the points that were <em>available to earn</em>, counting only the signals we could actually evaluate.</p>
+        <div class="g-formula">
+          score = earned &divide; possible on <em>known</em> signals &times; 100
+        </div>
+        <p>A park held 20 years, 40 lots, absentee owner, private septic &mdash; with owner age and mortgage unknown:</p>
+        <div class="g-formula g-formula-calc">
+          earned&nbsp;&nbsp;&nbsp; 18 tenure + 12 size + 10 absentee + 6 utility + 4 individual = <strong>50</strong><br>
+          possible&nbsp; 22 + 12 + 10 + 6 + 4 + 10 neglect + 14 owner-carry = <strong>78</strong><br>
+          score&nbsp;&nbsp;&nbsp;&nbsp; 50 &divide; 78 = <strong>64</strong>
+        </div>
+        <p>Scored out of a fixed 100 that park would sit at 50 and get buried, because 36 of those points require data nobody can obtain for free.</p>
+
+        <h3 style="margin-top:26px">A, B, C, D &mdash; how a band is assigned</h3>
+        <p>Two gates. The score sets the band; <strong>confidence caps how high it can go.</strong></p>
+        <table class="g-table">
+          <tr><th>Band</th><th>Score</th><th>Confidence</th><th>What it means</th></tr>
+          <tr><td><span class="band band-A">A</span></td><td>60+</td><td>50%+</td><td>Call these. Strong signals <em>and</em> enough evidence to trust them.</td></tr>
+          <tr><td><span class="band band-B">B</span></td><td>45&ndash;59</td><td>35%+</td><td>Next after the A's &mdash; or a strong park we can't fully verify yet.</td></tr>
+          <tr><td><span class="band band-C">C</span></td><td>25&ndash;44</td><td>any</td><td>Weak signals, or too little known. Most unresearched parks land here.</td></tr>
+          <tr><td><span class="band band-D">D</span></td><td>under 25</td><td>any</td><td>Signals point away &mdash; recent sale, portfolio owner, public utilities.</td></tr>
+        </table>
+        <div class="g-note"><strong>Why confidence caps the band.</strong> A park scoring 88 on three known signals is not a better lead than one scoring 65 on seven &mdash; it is just less researched. Without the cap, the top of the call list fills with parks we know nothing about. Below 50% confidence a park cannot reach A however well it scores; below 35% it cannot beat C.</div>
+        <div class="g-note" style="margin-top:10px"><strong>Confidence tops out near 78% today.</strong> Owner age and mortgage status are 36 of the 100 points and are blank on every park. Fill either one and that park's confidence &mdash; often its band &mdash; moves immediately.</div>
+      </section>
+
+      <!-- ---------- CALLS ---------- -->
+      <section class="g-sec hidden" data-g="calls">
+        <h3>Working a call, start to finish</h3>
+        <ol class="g-steps">
+          <li><strong>Pick your list.</strong> Filter to band <strong>A</strong>, or use a Signal chip. <em>Owner-carry history</em> is the warmest list in the database.</li>
+          <li><strong>Open the park.</strong> Read the score breakdown before dialing — you'll know if they're absentee, how long they've held, whether they've carried paper.</li>
+          <li><strong>Tap the phone number</strong> to dial from your phone.</li>
+          <li><strong>Log it immediately</strong> — <em>+ Log contact</em>, pick method and outcome, add a line. This is the record your partner sees.</li>
+          <li><strong>Capture what you learned</strong> — occupancy, lot rent, park-owned homes, asking price. Every field you fill raises the confidence score.</li>
+          <li><strong>Set "Open to seller finance?"</strong> — the single most valuable thing a call can establish.</li>
+          <li><strong>Set a follow-up date.</strong> It surfaces in "Follow-ups due" and marks the row.</li>
+          <li><strong>Move the status</strong> — Prospect &rarr; Contacted &rarr; Under review &rarr; Passed or Under contract. Then <em>Save changes</em>.</li>
+        </ol>
+        <div class="g-note"><strong>The capital-gains angle.</strong> An owner who bought in the 90s for $200K and could sell for $2M faces a large capital-gains bill on an outright sale. An installment sale spreads that gain over years. Seller financing isn't you asking a favor — it's often better for them. Long tenure plus a low old purchase price is your opening.</div>
+      </section>
+
+      <!-- ---------- TEAM ---------- -->
+      <section class="g-sec hidden" data-g="team">
+        <h3>Both of you, at the same time</h3>
+        <p>Everything saves to a shared GitHub Gist. You each connect with the same Gist ID and token, but <strong>your own initials</strong> in Sync setup.</p>
+        <ul class="g-list">
+          <li><strong>Notes and contact logs never collide.</strong> They merge and dedupe. A call you log can't be erased by his save, or the reverse.</li>
+          <li><strong>Other fields are per-park, newest wins.</strong> Different parks never conflict.</li>
+          <li><strong>Changes pull every 45 seconds</strong> and whenever you switch back to the tab. A toast tells you when something arrived.</li>
+          <li><strong>Saves are debounced ~2.5s.</strong> Watch the indicator go Saving&hellip; &rarr; Synced.</li>
+        </ul>
+        <div class="g-note">The one thing to avoid: both editing the <em>same park's same field</em> within the same minute. Last save wins there. Splitting by county or by band avoids it entirely.</div>
+      </section>
+
+      <!-- ---------- LIMITS ---------- -->
+      <section class="g-sec hidden" data-g="limits">
+        <h3>What this does not tell you</h3>
+        <ul class="g-list">
+          <li><strong>Mortgage and lien status — blank.</strong> Worth 18 points and unknowable for free. County recorder or a Doxpop subscription. Until then, ask on the call.</li>
+          <li><strong>Owner age — blank.</strong> Worth 18 points. Requires a skip-trace service.</li>
+          <li><strong>No sale before 2008.</strong> The state's database starts there. "18y+" means <em>at least</em> 18 years — could be 40. The assessor card shows the true deed date.</li>
+          <li><strong>Quitclaim and foreclosure flags come back empty.</strong> The columns exist in the state files but aren't populated. Don't read a blank as a "no."</li>
+          <li><strong>Roughly 400 parks have no parcel ID</strong>, so no sale data, so they're capped at band C. They aren't bad targets — they're unresearched ones.</li>
+          <li><strong>Prices under about $25,000 aren't market sales.</strong> $10 and $1 transfers are family or entity moves. Don't use them as comps.</li>
+          <li><strong>Occupancy, lot rent, and park-owned homes come only from calls.</strong> No public source.</li>
+        </ul>
+      </section>
+
+      <!-- ---------- REFRESH ---------- -->
+      <section class="g-sec hidden" data-g="refresh">
+        <h3>Keeping it current</h3>
+        <table class="g-table">
+          <tr><th>What</th><th>How</th><th>How often</th></tr>
+          <tr><td>Licensing &amp; owners</td><td>Run <code>1_roster_pull.js</code> then <code>2_details_pull.js</code> in the browser console on the FIMS site, send both CSVs to Claude to rebuild</td><td>Monthly</td></tr>
+          <tr><td>Parcel IDs</td><td>Run <code>4_parcel_pull.js</code> in the console with this dashboard open, import the CSV in the Sales tab</td><td>Once, then after adding parks</td></tr>
+          <tr><td>Sale history</td><td>Open <code>sdf_processor.html</code>, paste parcel IDs, drop the state zip files, import the result</td><td>Quarterly — state updates Fridays</td></tr>
+          <tr><td>Your own work</td><td>Saves itself</td><td>Continuous</td></tr>
+        </table>
+        <div class="g-note"><strong>Back it up.</strong> Export CSV now and then. The Gist is a single point of failure, and a stray token change can lock you out.</div>
+      </section>
+
+    </div>
+    <div class="modal-footer">
+      <span class="g-dim" style="font-size:11px">All figures are public record. Verify anything material before you rely on it.</span>
+      <button class="btn btn-brass" id="closeGuideBtn2">Got it</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============================= SYNC SETUP MODAL ============================= -->
 <div class="modal-overlay hidden sync-modal" id="syncModalOverlay">
   <div class="modal">
@@ -904,7 +1134,13 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
       <div class="sync-steps">
         1. Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">fine-grained personal access token</a> with <strong>Gists: read and write</strong> permission.<br>
         2. Paste it below. Leave Gist ID blank the first time — one will be created for you automatically.<br>
-        3. Your token is stored only in this browser's local storage. It is never written into this page's source.
+        3. Your token is stored only in this browser's local storage. It is never written into this page's source.<br>
+        4. <strong>Sharing with a partner?</strong> Give them the same token and Gist ID. Edits merge per park and
+        the dashboard pulls their changes every 45 seconds, so you can both work the list at once.
+      </div>
+      <div class="sync-field">
+        <label>Your name or initials</label>
+        <input type="text" id="syncWhoInput" placeholder="JD">
       </div>
       <div class="sync-field">
         <label>Personal access token</label>
@@ -1043,6 +1279,10 @@ const FIELD_SCHEMA = {
   last_updated:{d:'',src:'auto'},
 
   // --- scoring / provenance ---
+  // multi-user sync bookkeeping
+  _rev:{d:0,src:'auto'},        // ms timestamp of last local edit
+  _by:{d:'',src:'auto'},        // who made it
+  _deleted:{d:false,src:'auto'},// tombstone, so a delete isn't resurrected by merge
   sf_score:{d:0,src:'calc'}, sf_conf:{d:0,src:'calc'}, sf_band:{d:'',src:'calc'}, tenure_note:{d:'',src:'calc'}, lots_per_acre:{d:'',src:'calc'},
   verified:{d:[],src:'call'}                 // list of field keys user has confirmed
 };
@@ -1122,6 +1362,10 @@ function computeDerived(p, allParks){
   // Density: lots per acre. Under ~4 suggests room to add pads.
   const ac = parseNum(p.acreage), lt = parseNum(p.pads);
   p.lots_per_acre = (ac && lt && ac>0) ? Math.round((lt/ac)*10)/10 : '';
+
+  // Derive from the log rather than trusting a stored flag — after a merge the
+  // boolean can disagree with the entries that actually survived.
+  if(Array.isArray(p.contact_log) && p.contact_log.length) p.contacted = true;
 
   p.sf_score = sellerFinanceScore(p);
   p.sf_conf  = sfConfidence(p);
@@ -1392,8 +1636,19 @@ function getCred(){
     return raw ? JSON.parse(raw) : null;
   }catch(e){ return null; }
 }
-function setCred(token, gistId){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({token, gistId}));
+function setCred(token, gistId, who){
+  const prev = getCred() || {};
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({token, gistId, who: who || prev.who || ''}));
+}
+function whoAmI(){
+  const c = getCred();
+  return (c && c.who) ? c.who : 'unknown';
+}
+/* Stamp a park as edited by this user, right now. Merge uses these. */
+function touch(p){
+  p._rev = Date.now();
+  p._by  = whoAmI();
+  return p;
 }
 function clearCred(){
   localStorage.removeItem(STORAGE_KEY);
@@ -1442,7 +1697,11 @@ async function createGist(token){
   return json.id;
 }
 
-async function loadFromGist(){
+let _lastPull = 0;
+let _pollTimer = null;
+
+async function loadFromGist(opts){
+  opts = opts || {};
   const cred = getCred();
   if(!cred) return null;
   try{
@@ -1455,7 +1714,7 @@ async function loadFromGist(){
       content = await raw.text();
     }
     const parsed = JSON.parse(content);
-    console.log(`[sync] Loaded ${parsed.length} parks from Gist ${cred.gistId}`);
+    if(!opts.quiet) console.log(`[sync] Loaded ${parsed.length} parks from Gist ${cred.gistId}`);
     return parsed;
   }catch(e){
     console.error('[sync] Load failed:', e.message);
@@ -1469,10 +1728,21 @@ async function saveToGistNow(){
   _syncing = true;
   updateSyncIndicator('pending');
   try{
+    // Pull whatever your partner wrote since you loaded, merge, then write.
+    const remote = await loadFromGist({quiet:true});
+    if(remote){
+      const {parks, changed} = mergeParkSets(STATE.parks, remote);
+      STATE.parks = parks;
+      if(changed){
+        console.log(`[sync] merged ${changed} remote change(s) before saving`);
+        if(typeof renderAll==='function') renderAll();
+      }
+    }
     await ghRequest(`/gists/${cred.gistId}`, {
       method:'PATCH',
       body: JSON.stringify({ files:{ [GIST_FILENAME]: { content: JSON.stringify(STATE.parks) } } })
     });
+    _lastPull = Date.now();
     console.log(`[sync] Saved ${STATE.parks.length} parks to Gist`);
     updateSyncIndicator('on');
     return true;
@@ -1503,11 +1773,63 @@ function updateSyncIndicator(state){
   else { label.textContent='Local only (no sync)'; }
 }
 
+
+/* ==========================================================================
+   MERGE — two people editing the same Gist
+   Last-write-wins on the whole file loses data: if you save while your partner
+   has the older copy open, their save overwrites yours wholesale. So we merge
+   per park, and treat notes and the contact log as append-only.
+   ========================================================================== */
+
+function mergeEntryLists(a, b, keyOf){
+  const out = [], seen = new Set();
+  (a||[]).concat(b||[]).forEach(e=>{
+    if(!e) return;
+    const k = keyOf(e);
+    if(seen.has(k)) return;
+    seen.add(k); out.push(e);
+  });
+  out.sort((x,y)=>String(x.date||'').localeCompare(String(y.date||'')));
+  return out;
+}
+const noteKey = n => (n.date||'')+'|'+(n.text||'');
+const logKey  = e => (e.date||'')+'|'+(e.method||'')+'|'+(e.outcome||'')+'|'+(e.note||'');
+
+/* Returns {parks, changed} — remote merged into local. */
+function mergeParkSets(localArr, remoteArr){
+  const byId = new Map();
+  (localArr||[]).forEach(p=>byId.set(p.id, p));
+  let changed = 0;
+
+  (remoteArr||[]).forEach(r=>{
+    const l = byId.get(r.id);
+    if(!l){ byId.set(r.id, r); changed++; return; }
+
+    // append-only collections always union, whoever wrote them
+    const notes = mergeEntryLists(l.notes, r.notes, noteKey);
+    const log   = mergeEntryLists(l.contact_log, r.contact_log, logKey);
+
+    const lRev = Number(l._rev)||0, rRev = Number(r._rev)||0;
+    let winner;
+    if(rRev > lRev){ winner = Object.assign({}, l, r); changed++; }
+    else            { winner = Object.assign({}, r, l); }
+
+    if((notes.length !== (l.notes||[]).length) || (log.length !== (l.contact_log||[]).length)) changed++;
+    winner.notes = notes;
+    winner.contact_log = log;
+    winner._deleted = !!(l._deleted || r._deleted);
+    byId.set(r.id, winner);
+  });
+
+  return { parks: [...byId.values()], changed };
+}
+
 /* ---- Sync setup modal wiring ---- */
 function openSyncModal(){
   const cred = getCred();
   document.getElementById('syncTokenInput').value = cred?.token || '';
   document.getElementById('syncGistInput').value = cred?.gistId || '';
+  const w=document.getElementById('syncWhoInput'); if(w) w.value = cred?.who || '';
   document.getElementById('syncMsg').className = 'sync-msg hidden';
   document.getElementById('syncModalOverlay').classList.remove('hidden');
 }
@@ -1518,6 +1840,7 @@ function closeSyncModal(){
 async function handleSyncSave(){
   const token = document.getElementById('syncTokenInput').value.trim();
   let gistId = document.getElementById('syncGistInput').value.trim();
+  const who  = (document.getElementById('syncWhoInput')||{}).value?.trim() || '';
   const msg = document.getElementById('syncMsg');
   msg.className = 'sync-msg pending';
   msg.textContent = 'Connecting…';
@@ -1534,10 +1857,12 @@ async function handleSyncSave(){
       gistId = await createGist(token);
       document.getElementById('syncGistInput').value = gistId;
     }
-    setCred(token, gistId);
+    setCred(token, gistId, who);
     const remote = await loadFromGist();
     if(remote){
-      STATE.parks = remote;
+      const merged = mergeParkSets(STATE.parks, remote);
+      STATE.parks = merged.parks;
+      startPolling();
       msg.className = 'sync-msg ok';
       msg.textContent = `Connected. Loaded ${remote.length} parks from Gist ${gistId}.`;
       updateSyncIndicator('on');
@@ -1562,6 +1887,30 @@ function handleSyncDisconnect(){
   const msg = document.getElementById('syncMsg');
   msg.className = 'sync-msg pending';
   msg.textContent = 'Disconnected. Using local placeholder/seed data only.';
+}
+
+
+/* ---- Poll for your partner's changes ---- */
+const POLL_MS = 45000;
+async function pollRemote(){
+  if(!hasSync() || _syncing) return;
+  try{
+    const remote = await loadFromGist({quiet:true});
+    if(!remote) return;
+    const {parks, changed} = mergeParkSets(STATE.parks, remote);
+    if(changed){
+      STATE.parks = parks;
+      console.log(`[sync] pulled ${changed} change(s) from your partner`);
+      if(typeof renderAll==='function') renderAll();
+      if(typeof showToast==='function') showToast(changed+' update'+(changed>1?'s':'')+' from your partner');
+    }
+    _lastPull = Date.now();
+  }catch(e){ /* transient — next poll retries */ }
+}
+function startPolling(){
+  if(_pollTimer) clearInterval(_pollTimer);
+  _pollTimer = setInterval(pollRemote, POLL_MS);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pollRemote(); });
 }
 
 </script>
@@ -1613,6 +1962,7 @@ function getFilteredParks(){
   const f = STATE.filters;
   const q = STATE.search.trim().toLowerCase();
   let out = STATE.parks.filter(p=>{
+    if(p._deleted) return false;
     if(f.status!=='all' && p.status!==f.status) return false;
     if(f.licStatus!=='all' && p.license_status!==f.licStatus) return false;
     if(f.county!=='all' && p.county!==f.county) return false;
@@ -1668,7 +2018,7 @@ function renderAll(){
 }
 
 function renderSummary(){
-  const P = STATE.parks;
+  const P = STATE.parks.filter(p=>!p._deleted);
   const pads = P.reduce((s,p)=>s+(parseNum(p.pads)||0),0);
   const byStatus = {}; STATUS_ORDER.forEach(s=>byStatus[s]=0);
   P.forEach(p=>{ byStatus[p.status]=(byStatus[p.status]||0)+1; });
@@ -1897,7 +2247,7 @@ function openDetailModal(id){
   document.getElementById('logCallBtn').onclick=()=>logContact(id);
   document.getElementById('deleteBtn').onclick=()=>{
     if(confirm('Remove '+p.park_name+'?')){
-      STATE.parks=STATE.parks.filter(x=>x.id!==id);
+      p._deleted = true; touch(p);           // tombstone, so merge won't restore it
       closeDetailModal(); renderAll(); scheduleSave();
     }
   };
@@ -1911,7 +2261,8 @@ function renderContactLog(log){
     <div class="log-item">
       <div class="log-head"><span class="log-date">${escHtml(e.date)}</span>
         <span class="log-method">${escHtml(e.method)}</span>
-        <span class="log-outcome">${escHtml(e.outcome)}</span></div>
+        <span class="log-outcome">${escHtml(e.outcome)}</span>
+        ${e.by?`<span class="log-by">${escHtml(e.by)}</span>`:''}</div>
       ${e.note?`<div class="log-note">${escHtml(e.note)}</div>`:''}
     </div>`).join('');
 }
@@ -1924,8 +2275,8 @@ function logContact(id){
   if(outcome===null) return;
   const note=prompt('Note (optional):','')||'';
   if(!p.contact_log) p.contact_log=[];
-  p.contact_log.push({date:new Date().toISOString().slice(0,10),method:method,outcome:outcome,note:note});
-  p.contacted=true;
+  p.contact_log.push({date:new Date().toISOString().slice(0,10),method:method,outcome:outcome,note:note,by:whoAmI()});
+  p.contacted=true; touch(p);
   if(p.status==='prospect') p.status='contacted';
   document.getElementById('logList').innerHTML=renderContactLog(p.contact_log);
   const sel=document.getElementById('f_status'); if(sel) sel.value=p.status;
@@ -1934,13 +2285,14 @@ function logContact(id){
 
 function renderNotes(notes){
   if(!notes||!notes.length) return `<div class="muted-note">No notes yet.</div>`;
-  return notes.slice().reverse().map(n=>`<div class="note-item"><div class="note-date">${escHtml(n.date)}</div>${escHtml(n.text)}</div>`).join('');
+  return notes.slice().reverse().map(n=>`<div class="note-item"><div class="note-date">${escHtml(n.date)}${n.by?' · '+escHtml(n.by):''}</div>${escHtml(n.text)}</div>`).join('');
 }
 function addNote(id){
   const ta=document.getElementById('newNoteText'); const text=ta.value.trim(); if(!text) return;
   const p=STATE.parks.find(x=>x.id===id); if(!p) return;
   if(!p.notes) p.notes=[];
-  p.notes.push({date:new Date().toISOString().slice(0,10),text:text});
+  p.notes.push({date:new Date().toISOString().slice(0,10),text:text,by:whoAmI()});
+  touch(p);
   ta.value='';
   document.getElementById('notesList').innerHTML=renderNotes(p.notes);
   scheduleSave();
@@ -1970,6 +2322,7 @@ function saveDetailModal(id){
   p.legal_filings=gv('f_liens'); p.asking_price=gv('f_asking');
   p.est_value=gv('f_estval');
   p.last_updated=new Date().toISOString().slice(0,10);
+  touch(p);
   if(prev!==p.status) showStamp(p.status);
   closeDetailModal(); renderAll(); scheduleSave();
   showToast('Saved '+p.park_name);
@@ -2007,6 +2360,7 @@ function submitAddPark(){
     owner_name:gv('ap_owner').trim(), owner_phone:gv('ap_phone').trim(),
     last_updated:new Date().toISOString().slice(0,10)
   });
+  touch(p);
   STATE.parks.push(p);
   closeAddParkModal(); renderAll(); scheduleSave(); showToast('Added '+name);
 }
@@ -2018,7 +2372,7 @@ function showToast(msg){
 
 /* ---- Research panel ---- */
 function renderSalesPanel(){
-  const P=STATE.parks, total=P.length;
+  const P=STATE.parks.filter(p=>!p._deleted), total=P.length;
   const withParcel=P.filter(function(p){return p.parcel_id;}).length;
   const withSale  =P.filter(function(p){return p.last_sale_date;}).length;
   const pPct=total?Math.round((withParcel/total)*100):0;
@@ -2098,6 +2452,7 @@ function handleSaleCsv(e){
         if(r.Tax_Bill_Mailing)   p.owner_mailing_address=r.Tax_Bill_Mailing;
         if(r.Foreclosure)        p.foreclosure=r.Foreclosure;
         sdfCols++;
+        touch(p);
         matched++;
       });
       // An SDF import is an exhaustive search of 2008+. Any park with a parcel ID
@@ -2152,7 +2507,7 @@ function exportCsv(){
   const cols=Object.keys(FIELD_SCHEMA).filter(function(k){
     return ['notes','contact_log','verified'].indexOf(k)===-1;
   });
-  const rows=[cols.join(',')].concat(STATE.parks.map(function(p){
+  const rows=[cols.join(',')].concat(STATE.parks.filter(function(p){return !p._deleted;}).map(function(p){
     return cols.map(function(c){
       const v = (p[c]===undefined||p[c]===null)?'':p[c];
       return '"'+v.toString().replace(/"/g,'""')+'"';
@@ -2186,6 +2541,7 @@ async function boot(){
     STATE.parks.length.toLocaleString()+' licensed parks · '+STATE_CONFIG.licensing_authority;
   window.__MHP_PARKS__ = STATE.parks;
   renderAll();
+  if(hasSync()) startPolling();
 }
 
 /* Filter wiring */
@@ -2279,6 +2635,24 @@ document.getElementById('addParkModalOverlay').addEventListener('click', e=>{ if
 document.getElementById('submitAddParkBtn').addEventListener('click', submitAddPark);
 
 document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
+
+/* ---- guide ---- */
+function openGuide(){ document.getElementById('guideModalOverlay').classList.remove('hidden'); }
+function closeGuide(){ document.getElementById('guideModalOverlay').classList.add('hidden'); }
+document.getElementById('guideBtn').addEventListener('click', openGuide);
+document.getElementById('closeGuideBtn').addEventListener('click', closeGuide);
+document.getElementById('closeGuideBtn2').addEventListener('click', closeGuide);
+document.getElementById('guideModalOverlay').addEventListener('click', e=>{ if(e.target.id==='guideModalOverlay') closeGuide(); });
+document.getElementById('guideNav').addEventListener('click', e=>{
+  const b=e.target.closest('.g-tab'); if(!b) return;
+  document.querySelectorAll('.g-tab').forEach(t=>t.classList.remove('active'));
+  b.classList.add('active');
+  const key=b.getAttribute('data-g');
+  document.querySelectorAll('.g-sec').forEach(sec=>
+    sec.classList.toggle('hidden', sec.getAttribute('data-g')!==key));
+  document.querySelector('.guide-body').scrollTop=0;
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeGuide(); closeDetailModal(); } });
 
 window.addEventListener('resize', ()=>{ if(STATE.view==='map') renderMap(); });
 
