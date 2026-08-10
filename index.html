@@ -678,6 +678,7 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
 .score-bar-row.unknown .sbl{opacity:.45}
 .score-bar-row.unknown .sbt{opacity:.25}
 .score-bar-row.unknown .sbv{opacity:.5;font-style:italic}
+.conf-num{font-family:var(--font-mono);font-size:9px;color:var(--paper-faint);margin-left:5px;}
 
 </style>
 </head>
@@ -1635,6 +1636,14 @@ function getFilteredParks(){
     return true;
   });
   out.sort((a,b)=>{
+    // Signal column ranks by BAND first, then score inside the band. Sorting on
+    // the raw ratio alone floats thin-data parks above the researched A-list.
+    if(STATE.sortKey==='sf_score'){
+      const ord={A:0,B:1,C:2,D:3};
+      const ab=ord[a.sf_band]??3, bb=ord[b.sf_band]??3;
+      if(ab!==bb) return (ab-bb)*(STATE.sortDir===-1?1:-1);
+      return ((b.sf_score||0)-(a.sf_score||0))*(STATE.sortDir===-1?1:-1);
+    }
     let av=a[STATE.sortKey], bv=b[STATE.sortKey];
     if(['pads','sf_score','years_held','last_sale_price','assessed_value'].indexOf(STATE.sortKey)>-1){
       av=parseNum(av); bv=parseNum(bv);
@@ -1705,7 +1714,7 @@ function renderTable(){
     const band = p.sf_band||'D';
     const st = p.status||'prospect';
     return `<tr data-id="${escAttr(p.id)}" class="${isDue(p)?'row-due':''}">
-      <td><span class="band band-${band}" title="Seller-finance signal ${p.sf_score}/100">${band}</span><span class="score-num">${p.sf_score}</span></td>
+      <td><span class="band band-${band}" title="Seller-finance signal ${p.sf_score} · ${p.sf_conf||0}% of signals known">${band}</span><span class="score-num">${p.sf_score}</span><span class="conf-num" title="how much we actually know">${p.sf_conf||0}%</span></td>
       <td>${escHtml(p.park_name)}${p.do_not_call?' <span class="dnc">DNC</span>':''}${
         p.seller_financed_history==='yes'||p.land_contract_history==='yes'
           ? ' <span class="sig sig-sf" title="Owner bought on owner-carry">SF</span>':''}${
