@@ -675,6 +675,9 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
 .sig-sf {background:rgba(127,166,107,.18);color:var(--green);border:1px solid rgba(127,166,107,.45);}
 .sig-pre{background:var(--brass-glow);color:var(--brass);border:1px solid var(--brass-dim);}
 .sig-abs{background:rgba(122,166,217,.15);color:#7AA6D9;border:1px solid rgba(122,166,217,.4);}
+.score-bar-row.unknown .sbl{opacity:.45}
+.score-bar-row.unknown .sbt{opacity:.25}
+.score-bar-row.unknown .sbv{opacity:.5;font-style:italic}
 
 </style>
 </head>
@@ -1039,7 +1042,7 @@ const FIELD_SCHEMA = {
   last_updated:{d:'',src:'auto'},
 
   // --- scoring / provenance ---
-  sf_score:{d:0,src:'calc'}, tenure_note:{d:'',src:'calc'}, lots_per_acre:{d:'',src:'calc'},
+  sf_score:{d:0,src:'calc'}, sf_conf:{d:0,src:'calc'}, sf_band:{d:'',src:'calc'}, tenure_note:{d:'',src:'calc'}, lots_per_acre:{d:'',src:'calc'},
   verified:{d:[],src:'call'}                 // list of field keys user has confirmed
 };
 
@@ -1120,6 +1123,8 @@ function computeDerived(p, allParks){
   p.lots_per_acre = (ac && lt && ac>0) ? Math.round((lt/ac)*10)/10 : '';
 
   p.sf_score = sellerFinanceScore(p);
+  p.sf_conf  = sfConfidence(p);
+  p.sf_band  = scoreBand(p.sf_score, p.sf_conf);
   return p;
 }
 
@@ -1175,24 +1180,53 @@ function sfComponents(p){
   return c;
 }
 
+/* Which signals can we actually evaluate for this park?
+   Scoring against a fixed 100 is misleading when owner age and mortgage
+   status are unknowable for free — a strong target would cap around 75 and
+   never reach the A band. So the score is a percentage of what IS knowable. */
+function sfKnown(p){
+  return {
+    tenure   : (p.years_held!=='' && p.years_held!==null) || p.pre_sdf_era==='yes',
+    age      : p.owner_age!=='' && p.owner_age!==null,
+    freeclear: p.has_mortgage==='yes' || p.has_mortgage==='no',
+    size     : p.pads!=='' && p.pads!==null,
+    absentee : p.absentee==='yes' || p.absentee==='no',
+    neglect  : true,                       // license status always present
+    utility  : !!(p.water_source || p.sewer_source),
+    mompop   : p.owner_portfolio_count!=='' && p.owner_portfolio_count!==null,
+    sfhistory: p.sdf_checked==='yes'
+  };
+}
+
 function sellerFinanceScore(p){
-  const c = sfComponents(p);
-  return Math.round(SF_WEIGHTS.reduce((s,w)=> s + (c[w.key]||0), 0));
+  const c = sfComponents(p), k = sfKnown(p);
+  let earned=0, possible=0;
+  SF_WEIGHTS.forEach(w=>{
+    if(!k[w.key]) return;                  // unknown → excluded from both sides
+    earned   += (c[w.key]||0);
+    possible += w.max;
+  });
+  if(possible < 20) return 0;              // too little known to rank at all
+  return Math.round((earned/possible)*100);
 }
 
 /* How much of the score is knowable yet — flags thin data vs. genuinely low score */
 function sfConfidence(p){
-  let known = 0, total = 0;
-  const checks = [
-    (p.years_held!=='' || p.pre_sdf_era==='yes'), p.owner_age!=='' , p.has_mortgage!=='' ,
-    p.pads!=='' , p.absentee!=='' , p.license_status!=='unknown'
-  ];
-  checks.forEach(v=>{ total++; if(v) known++; });
+  const k = sfKnown(p);
+  const total = SF_WEIGHTS.reduce((a,w)=>a+w.max,0);
+  const known = SF_WEIGHTS.reduce((a,w)=>a+(k[w.key]?w.max:0),0);
   return Math.round((known/total)*100);
 }
 
-function scoreBand(s){
-  return s>=60 ? 'A' : s>=38 ? 'B' : s>=20 ? 'C' : 'D';
+/* A band needs evidence, not just a high ratio. A park scoring 88% on three
+   known signals is not a better target than one scoring 70% on seven — it's
+   just less researched. Confidence caps the band it can reach. */
+function scoreBand(score, conf){
+  if(conf===undefined) conf = 100;
+  const cap = conf>=50 ? 'A' : conf>=35 ? 'B' : 'C';
+  let band = score>=60 ? 'A' : score>=45 ? 'B' : score>=25 ? 'C' : 'D';
+  const order = ['A','B','C','D'];
+  return order.indexOf(band) < order.indexOf(cap) ? cap : band;
 }
 
 </script>
@@ -1582,7 +1616,7 @@ function getFilteredParks(){
     if(f.licStatus!=='all' && p.license_status!==f.licStatus) return false;
     if(f.county!=='all' && p.county!==f.county) return false;
     if(f.utility!=='all' && p.water_source!==f.utility) return false;
-    if(f.band!=='all' && scoreBand(p.sf_score)!==f.band) return false;
+    if(f.band!=='all' && p.sf_band!==f.band) return false;
     if(f.signal && f.signal!=='all'){
       if(f.signal==='presdf'   && p.pre_sdf_era!=='yes') return false;
       if(f.signal==='sfhist'   && !(p.seller_financed_history==='yes'||p.land_contract_history==='yes')) return false;
@@ -1629,7 +1663,7 @@ function renderSummary(){
   const pads = P.reduce((s,p)=>s+(parseNum(p.pads)||0),0);
   const byStatus = {}; STATUS_ORDER.forEach(s=>byStatus[s]=0);
   P.forEach(p=>{ byStatus[p.status]=(byStatus[p.status]||0)+1; });
-  const aList = P.filter(p=>scoreBand(p.sf_score)==='A').length;
+  const aList = P.filter(p=>p.sf_band==='A').length;
   const sfHist = P.filter(p=>p.seller_financed_history==='yes'||p.land_contract_history==='yes').length;
   const preSdf = P.filter(p=>p.pre_sdf_era==='yes').length;
   const due = P.filter(isDue).length;
@@ -1668,7 +1702,7 @@ function renderTable(){
     return;
   }
   tbody.innerHTML = parks.map(p=>{
-    const band = scoreBand(p.sf_score);
+    const band = p.sf_band||'D';
     const st = p.status||'prospect';
     return `<tr data-id="${escAttr(p.id)}" class="${isDue(p)?'row-due':''}">
       <td><span class="band band-${band}" title="Seller-finance signal ${p.sf_score}/100">${band}</span><span class="score-num">${p.sf_score}</span></td>
@@ -1742,9 +1776,9 @@ function openDetailModal(id){
   const p = STATE.parks.find(x=>x.id===id);
   if(!p) return;
   STATE.selectedId = id;
-  const band = scoreBand(p.sf_score);
+  const band = p.sf_band||'D';
   const comps = sfComponents(p);
-  const conf = sfConfidence(p);
+  const conf = p.sf_conf||sfConfidence(p);
 
   document.getElementById('modalTitle').innerHTML =
     `${escHtml(p.park_name)} <span class="band band-${band}">${band}</span>`;
@@ -1758,14 +1792,15 @@ function openDetailModal(id){
              <div class="score-cap">Seller-finance signal · ${conf}% data confidence</div></div>
       </div>
       <div class="score-bars">
-        ${SF_WEIGHTS.map(w=>{
-          const got=comps[w.key]||0, pct=Math.round((got/w.max)*100);
-          return `<div class="score-bar-row"><span class="sbl">${w.label}</span>
-            <div class="sbt"><div class="sbf" style="width:${pct}%"></div></div>
-            <span class="sbv">${got}/${w.max}</span></div>`;
-        }).join('')}
+        ${(()=>{const k=sfKnown(p);return SF_WEIGHTS.map(w=>{
+          const known=k[w.key], got=comps[w.key]||0, pct=Math.round((got/w.max)*100);
+          return `<div class="score-bar-row${known?'':' unknown'}"><span class="sbl">${w.label}</span>
+            <div class="sbt">${known?`<div class="sbf" style="width:${pct}%"></div>`:''}</div>
+            <span class="sbv">${known?got+'/'+w.max:'no data'}</span></div>`;
+        }).join('');})()}
       </div>
-      ${conf<60?`<div class="score-hint">Score is provisional — fill in owner age, mortgage status, and last sale date to sharpen it.</div>`:''}
+      <div class="score-hint">Scored against the ${conf}% of signals we can evaluate for this park.
+        ${conf<70?'Owner age and mortgage status would sharpen it most.':''}</div>
     </div>
 
     <div class="section-divider">Call workflow</div>
