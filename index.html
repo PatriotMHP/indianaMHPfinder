@@ -667,6 +667,15 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
 .parcel-id.conf-low::before{background:var(--rust);}
 .parcel-id.copied{color:var(--green);border-bottom-color:var(--green);}
 
+/* signal badges in the table */
+.sig{
+  font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.03em;
+  padding:1px 4px;border-radius:2px;margin-left:4px;vertical-align:1px;
+}
+.sig-sf {background:rgba(127,166,107,.18);color:var(--green);border:1px solid rgba(127,166,107,.45);}
+.sig-pre{background:var(--brass-glow);color:var(--brass);border:1px solid var(--brass-dim);}
+.sig-abs{background:rgba(122,166,217,.15);color:#7AA6D9;border:1px solid rgba(122,166,217,.4);}
+
 </style>
 </head>
 <body>
@@ -704,6 +713,17 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
         <button class="chip" data-band="B">B</button>
         <button class="chip" data-band="C">C</button>
         <button class="chip" data-band="D">D</button>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-label">Signals</span>
+      <div class="chip-row" id="signalChips">
+        <button class="chip active" data-sig="all">All</button>
+        <button class="chip" data-sig="presdf" title="No recorded sale since 2008 — held 18+ years">Pre-2008</button>
+        <button class="chip" data-sig="sfhist" title="Owner bought on seller financing or land contract">Owner-carry history</button>
+        <button class="chip" data-sig="absentee" title="Owner mailing address is out of area">Absentee</button>
+        <button class="chip" data-sig="distress" title="Tax delinquent, sheriff sale, or short sale in history">Distress</button>
       </div>
     </div>
 
@@ -985,6 +1005,12 @@ const FIELD_SCHEMA = {
   parcel_id:{d:'',src:'auto'}, local_parcel_id:{d:'',src:'auto'},
   property_class:{d:'',src:'auto'}, match_confidence:{d:'',src:'auto'},
   deed_type:{d:'',src:'auto'}, last_sale_seller:{d:'',src:'auto'}, last_sale_buyer:{d:'',src:'auto'},
+  seller_financed_history:{d:'',src:'auto'},   // owner previously bought on owner-carry
+  land_contract_history:{d:'',src:'auto'},
+  quitclaim_flag:{d:'',src:'auto'}, sheriff_sale:{d:'',src:'auto'}, short_sale:{d:'',src:'auto'},
+  market_days:{d:'',src:'auto'}, acreage:{d:'',src:'auto'}, foreclosure:{d:'',src:'auto'},
+  pre_sdf_era:{d:'',src:'calc'},               // parcel known, but no sale 2008+
+  sdf_checked:{d:'',src:'auto'},
   tax_delinquent:{d:'',src:'auto'},
   asking_price:{d:'',src:'call'}, est_value:{d:'',src:'call'},
 
@@ -1013,7 +1039,7 @@ const FIELD_SCHEMA = {
   last_updated:{d:'',src:'auto'},
 
   // --- scoring / provenance ---
-  sf_score:{d:0,src:'calc'}, tenure_note:{d:'',src:'calc'},
+  sf_score:{d:0,src:'calc'}, tenure_note:{d:'',src:'calc'}, lots_per_acre:{d:'',src:'calc'},
   verified:{d:[],src:'call'}                 // list of field keys user has confirmed
 };
 
@@ -1051,7 +1077,7 @@ function computeDerived(p, allParks){
   // years held. A quitclaim is usually an internal/family transfer, not a
   // true arm's-length sale — don't let it reset the tenure clock.
   p.years_held = yearsSince(p.last_sale_date) ?? '';
-  if(p.years_held !== '' && /quit\s*claim/i.test(p.deed_type||'')){
+  if(p.years_held !== '' && (p.quitclaim_flag==='yes' || /quit\s*claim/i.test(p.deed_type||''))){
     p.tenure_note = 'quitclaim — tenure may understate true hold';
   } else { p.tenure_note = ''; }
 
@@ -1069,9 +1095,13 @@ function computeDerived(p, allParks){
   p.assessed_per_lot= (av && lots) ? Math.round(av/lots) : '';
 
   // absentee: owner mailing zip differs from park zip
-  if(p.owner_mailing_address && p.zip){
-    const mz = (p.owner_mailing_address.match(/\b\d{5}\b/)||[])[0];
-    p.absentee = mz ? (mz !== p.zip ? 'yes' : 'no') : '';
+  if(p.owner_mailing_address){
+    const mail = p.owner_mailing_address.toUpperCase();
+    const st = (mail.match(/\b([A-Z]{2})\b[,\s]*\d{5}/)||[])[1];
+    const mz = (mail.match(/\b\d{5}\b/)||[])[0];
+    if(st && st !== 'IN')        p.absentee = 'yes';        // out of state
+    else if(mz && p.zip)         p.absentee = (mz !== p.zip ? 'yes' : 'no');
+    else                          p.absentee = '';
   }
 
   // portfolio count — same owner entity across dataset
@@ -1080,6 +1110,14 @@ function computeDerived(p, allParks){
     p.owner_portfolio_count = allParks.filter(x =>
       (x.owner_business||'').trim().toLowerCase() === key).length;
   }
+
+  // Pre-SDF cohort: we know the parcel and we searched the state sales DB,
+  // but nothing came back — so it has not traded since July 2008.
+  p.pre_sdf_era = (p.sdf_checked==='yes' && p.parcel_id && !p.last_sale_date) ? 'yes' : '';
+
+  // Density: lots per acre. Under ~4 suggests room to add pads.
+  const ac = parseNum(p.acreage), lt = parseNum(p.pads);
+  p.lots_per_acre = (ac && lt && ac>0) ? Math.round((lt/ac)*10)/10 : '';
 
   p.sf_score = sellerFinanceScore(p);
   return p;
@@ -1096,13 +1134,15 @@ const SF_WEIGHTS = [
   { key:'absentee',  max:10, label:'Absentee owner' },
   { key:'neglect',   max:10, label:'Neglect signals' },
   { key:'utility',   max: 6, label:'Private utilities' },
-  { key:'mompop',    max: 4, label:'Individual (not portfolio)' }
+  { key:'mompop',    max: 4, label:'Individual (not portfolio)' },
+  { key:'sfhistory', max:14, label:'Prior owner-carry deal' }
 ];
 
 function sfComponents(p){
   const c = {};
   const yh = parseNum(p.years_held);
-  c.tenure = yh===null ? 0 : yh>=25 ? 22 : yh>=15 ? 18 : yh>=10 ? 12 : yh>=7 ? 6 : 0;
+  if(yh===null && p.pre_sdf_era==='yes') c.tenure = 19;   // no sale since 2008 ⇒ 18+ yrs held
+  else c.tenure = yh===null ? 0 : yh>=25 ? 22 : yh>=15 ? 18 : yh>=10 ? 12 : yh>=7 ? 6 : 0;
 
   const age = parseNum(p.owner_age);
   c.age = age===null ? 0 : age>=75 ? 18 : age>=68 ? 15 : age>=60 ? 10 : age>=55 ? 5 : 0;
@@ -1129,6 +1169,9 @@ function sfComponents(p){
   const pc = parseNum(p.owner_portfolio_count);
   c.mompop = (pc!==null && pc<=1) ? 4 : 0;
 
+  // Bought the park on owner-carry themselves → already sold on the structure.
+  c.sfhistory = (p.seller_financed_history==='yes' || p.land_contract_history==='yes') ? 14 : 0;
+
   return c;
 }
 
@@ -1141,7 +1184,7 @@ function sellerFinanceScore(p){
 function sfConfidence(p){
   let known = 0, total = 0;
   const checks = [
-    p.years_held!=='' , p.owner_age!=='' , p.has_mortgage!=='' ,
+    (p.years_held!=='' || p.pre_sdf_era==='yes'), p.owner_age!=='' , p.has_mortgage!=='' ,
     p.pads!=='' , p.absentee!=='' , p.license_status!=='unknown'
   ];
   checks.forEach(v=>{ total++; if(v) known++; });
@@ -1502,7 +1545,7 @@ const STATE = {
   search: '',
   filters: {
     status:'all', licStatus:'all', county:'all', utility:'all',
-    minPads:0, maxPads:9999, band:'all', contactedOnly:false, dueOnly:false
+    minPads:0, maxPads:9999, band:'all', signal:'all', contactedOnly:false, dueOnly:false
   },
   selectedId: null
 };
@@ -1540,6 +1583,12 @@ function getFilteredParks(){
     if(f.county!=='all' && p.county!==f.county) return false;
     if(f.utility!=='all' && p.water_source!==f.utility) return false;
     if(f.band!=='all' && scoreBand(p.sf_score)!==f.band) return false;
+    if(f.signal && f.signal!=='all'){
+      if(f.signal==='presdf'   && p.pre_sdf_era!=='yes') return false;
+      if(f.signal==='sfhist'   && !(p.seller_financed_history==='yes'||p.land_contract_history==='yes')) return false;
+      if(f.signal==='absentee' && p.absentee!=='yes') return false;
+      if(f.signal==='distress' && !(p.tax_delinquent==='yes'||p.sheriff_sale==='yes'||p.short_sale==='yes')) return false;
+    }
     if(f.contactedOnly && !p.contacted) return false;
     if(f.dueOnly && !isDue(p)) return false;
     const pads = parseNum(p.pads)||0;
@@ -1581,6 +1630,8 @@ function renderSummary(){
   const byStatus = {}; STATUS_ORDER.forEach(s=>byStatus[s]=0);
   P.forEach(p=>{ byStatus[p.status]=(byStatus[p.status]||0)+1; });
   const aList = P.filter(p=>scoreBand(p.sf_score)==='A').length;
+  const sfHist = P.filter(p=>p.seller_financed_history==='yes'||p.land_contract_history==='yes').length;
+  const preSdf = P.filter(p=>p.pre_sdf_era==='yes').length;
   const due = P.filter(isDue).length;
 
   document.getElementById('summaryRow').innerHTML = `
@@ -1590,6 +1641,8 @@ function renderSummary(){
     <div class="summary-card ${due?'due':''}"><div class="num">${due}</div><div class="label">Follow-ups due</div></div>
     <div class="summary-card"><div class="num">${byStatus.contacted}</div><div class="label">Contacted</div></div>
     <div class="summary-card"><div class="num">${byStatus.under_review}</div><div class="label">Under review</div></div>
+    <div class="summary-card accent"><div class="num">${preSdf}</div><div class="label">Held 18y+</div></div>
+    <div class="summary-card accent"><div class="num">${sfHist}</div><div class="label">Owner-carry history</div></div>
     <div class="summary-card"><div class="num">${byStatus.under_contract}</div><div class="label">Under contract</div></div>
   `;
 }
@@ -1619,7 +1672,11 @@ function renderTable(){
     const st = p.status||'prospect';
     return `<tr data-id="${escAttr(p.id)}" class="${isDue(p)?'row-due':''}">
       <td><span class="band band-${band}" title="Seller-finance signal ${p.sf_score}/100">${band}</span><span class="score-num">${p.sf_score}</span></td>
-      <td>${escHtml(p.park_name)}${p.do_not_call?' <span class="dnc">DNC</span>':''}</td>
+      <td>${escHtml(p.park_name)}${p.do_not_call?' <span class="dnc">DNC</span>':''}${
+        p.seller_financed_history==='yes'||p.land_contract_history==='yes'
+          ? ' <span class="sig sig-sf" title="Owner bought on owner-carry">SF</span>':''}${
+        p.pre_sdf_era==='yes' ? ' <span class="sig sig-pre" title="No sale since 2008">18y+</span>':''}${
+        p.absentee==='yes' ? ' <span class="sig sig-abs" title="Absentee owner">ABS</span>':''}</td>
       <td>${escHtml(p.county)}</td>
       <td class="num">${escHtml(p.pads||'—')}</td>
       <td class="num">${p.years_held!==''?p.years_held+'y':'—'}</td>
@@ -1760,6 +1817,14 @@ function openDetailModal(id){
       ${fld('f_saledate','Last sale date',p.last_sale_date,'YYYY-MM-DD')}
       ${fld('f_saleprice','Last sale price',p.last_sale_price)}
       ${fld('f_deedtype','Deed type',p.deed_type,'warranty / quitclaim / limited')}
+      ${ro('Bought on owner-carry?', p.seller_financed_history==='yes'
+            ? '<strong style="color:var(--green)">Yes &mdash; seller financed</strong>'
+            : p.land_contract_history==='yes' ? '<strong style="color:var(--green)">Yes &mdash; land contract</strong>' : '')}
+      ${ro('Sale flags', [p.quitclaim_flag==='yes'?'quitclaim':'', p.sheriff_sale==='yes'?'sheriff sale':'',
+            p.short_sale==='yes'?'short sale':''].filter(Boolean).join(' · '))}
+      ${ro('Days on market', p.market_days)}
+      ${ro('Acreage / density', p.acreage ? escHtml(p.acreage)+' ac'+(p.lots_per_acre?' · '+p.lots_per_acre+' lots/ac':'') : '')}
+      ${ro('Tenure', p.pre_sdf_era==='yes' ? '<strong style="color:var(--brass)">No sale since 2008 &mdash; held 18+ years</strong>' : '')}
       ${ro('Sale parties', p.last_sale_seller||p.last_sale_buyer ? escHtml((p.last_sale_seller||'?')+' &rarr; '+(p.last_sale_buyer||'?')) : '')}
       ${ro('Years held', p.years_held!==''?`<strong style="color:var(--brass)">${p.years_held} years</strong>`:'')}
       ${ro('Price / lot', money(p.price_per_lot))}
@@ -1950,7 +2015,8 @@ function handleSaleCsv(e){
         if(p.local_parcel_id) byParcel[normPid(p.local_parcel_id)]=p;
       });
       let matched=0;
-      let gotParcel=0, gotSale=0, mhpClass=0;
+      let gotParcel=0, gotSale=0, mhpClass=0, sdfCols=0;
+      const isSdfFile = !!(rows.length && (rows[0].Seller_Financed!==undefined || rows[0].Seller_Mailing!==undefined));
       rows.forEach(function(r){
         let p = byId[r.facility_code||r.Facility_Code||''];
         if(!p){
@@ -1973,14 +2039,39 @@ function handleSaleCsv(e){
         if(r.Deed_Type||r.deed_type)   p.deed_type=r.Deed_Type||r.deed_type;
         if(r.Seller||r.seller)         p.last_sale_seller=r.Seller||r.seller;
         if(r.Buyer||r.buyer)           p.last_sale_buyer=r.Buyer||r.buyer;
+        // richer SDF columns
+        if(r.Seller_Financed) p.seller_financed_history=r.Seller_Financed;
+        if(r.Land_Contract)   p.land_contract_history=r.Land_Contract;
+        if(r.Quitclaim)       p.quitclaim_flag=r.Quitclaim;
+        if(r.Sheriff_Sale)    p.sheriff_sale=r.Sheriff_Sale;
+        if(r.Short_Sale)      p.short_sale=r.Short_Sale;
+        if(r.Market_Days)     p.market_days=r.Market_Days;
+        if(r.Acreage)         p.acreage=r.Acreage;
+        // Owner mailing address, best source first: the county tax bill goes to
+        // whoever owns it today; buyer is next best; seller only as a fallback.
+        if(r.Seller_Mailing && !p.owner_mailing_address) p.owner_mailing_address=r.Seller_Mailing;
+        if(r.Buyer_Mailing)      p.owner_mailing_address=r.Buyer_Mailing;
+        if(r.Tax_Bill_Mailing)   p.owner_mailing_address=r.Tax_Bill_Mailing;
+        if(r.Foreclosure)        p.foreclosure=r.Foreclosure;
+        sdfCols++;
         matched++;
       });
-      window.__lastImport={gotParcel:gotParcel,gotSale:gotSale,mhpClass:mhpClass};
+      // An SDF import is an exhaustive search of 2008+. Any park with a parcel ID
+      // that produced no sale genuinely has not traded since then.
+      let preSdf=0;
+      if(isSdfFile){
+        STATE.parks.forEach(function(p){
+          if(p.parcel_id){ p.sdf_checked='yes'; if(!p.last_sale_date) preSdf++; }
+        });
+      }
+      window.__lastImport={gotParcel:gotParcel,gotSale:gotSale,mhpClass:mhpClass,
+                           sdf:isSdfFile,preSdf:preSdf};
       const li=window.__lastImport||{};
       const bits=['Matched '+matched+' of '+rows.length+' rows'];
       if(li.gotParcel) bits.push(li.gotParcel+' parcel IDs');
       if(li.gotSale)   bits.push(li.gotSale+' sale dates');
       if(li.mhpClass)  bits.push(li.mhpClass+' confirmed class 415 (MHP)');
+      if(li.sdf && li.preSdf) bits.push(li.preSdf+' with no sale since 2008 (pre-SDF era)');
       msg.className='sync-msg ok';
       msg.textContent=bits.join(' · ')+'. Scores recalculated.';
       renderAll(); scheduleSave();
@@ -2074,6 +2165,13 @@ document.getElementById('minPadsInput').addEventListener('input', e=>{ STATE.fil
 document.getElementById('maxPadsInput').addEventListener('input', e=>{ STATE.filters.maxPads = e.target.value ? parseInt(e.target.value) : 9999; renderAll(); });
 document.getElementById('contactedOnlyCheck').addEventListener('change', e=>{ STATE.filters.contactedOnly = e.target.checked; renderAll(); });
 document.getElementById('dueOnlyCheck').addEventListener('change', e=>{ STATE.filters.dueOnly = e.target.checked; renderAll(); });
+document.getElementById('signalChips').addEventListener('click', e=>{
+  const btn = e.target.closest('.chip'); if(!btn) return;
+  document.querySelectorAll('#signalChips .chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  STATE.filters.signal = btn.getAttribute('data-sig');
+  renderAll();
+});
 document.getElementById('bandChips').addEventListener('click', e=>{
   const btn = e.target.closest('.chip'); if(!btn) return;
   document.querySelectorAll('#bandChips .chip').forEach(c=>c.classList.remove('active'));
