@@ -1624,7 +1624,20 @@ function wireMapInteractions(wrap, parks){
   svgEl.addEventListener('wheel', (e)=>{
     e.preventDefault();
     const delta = e.deltaY < 0 ? 1.12 : 0.89;
-    mapZoom = Math.max(0.8, Math.min(12, mapZoom*delta));
+    const oldZoom = mapZoom;
+    const newZoom = Math.max(0.8, Math.min(12, mapZoom*delta));
+    if(newZoom === oldZoom) return;
+    // Cursor position in the SVG's viewBox coordinate space
+    const rect = svgEl.getBoundingClientRect();
+    const vb = svgEl.viewBox.baseVal;
+    const sx = (e.clientX - rect.left) / rect.width  * vb.width;
+    const sy = (e.clientY - rect.top)  / rect.height * vb.height;
+    // Keep the world point under the cursor fixed while scaling (zoom-to-cursor)
+    const worldX = (sx - mapPanX) / oldZoom;
+    const worldY = (sy - mapPanY) / oldZoom;
+    mapPanX = sx - worldX * newZoom;
+    mapPanY = sy - worldY * newZoom;
+    mapZoom = newZoom;
     renderMap();
   }, {passive:false});
 
