@@ -1494,10 +1494,20 @@ function scoreBand(score, conf){
 const IND_BOUNDS = { latMin:37.771, latMax:41.761, lngMin:-88.098, lngMax:-84.785 };
 
 function geo(lat,lng,W,H){
-  return [
-    ((lng-IND_BOUNDS.lngMin)/(IND_BOUNDS.lngMax-IND_BOUNDS.lngMin))*W,
-    ((IND_BOUNDS.latMax-lat)/(IND_BOUNDS.latMax-IND_BOUNDS.latMin))*H
-  ];
+  // Aspect-ratio-correct equirectangular projection.
+  // Longitude is scaled by cos(mid-latitude) so Indiana isn't stretched wide;
+  // the state's true shape is fit into W x H and centered (letterbox-safe).
+  const latMin=IND_BOUNDS.latMin, latMax=IND_BOUNDS.latMax;
+  const lngMin=IND_BOUNDS.lngMin, lngMax=IND_BOUNDS.lngMax;
+  const cosLat = Math.cos((latMin+latMax)/2 * Math.PI/180);
+  const geoW = (lngMax-lngMin)*cosLat;   // corrected geographic width
+  const geoH = (latMax-latMin);          // geographic height
+  const scale = Math.min(W/geoW, H/geoH); // fit, preserve aspect
+  const drawW = geoW*scale, drawH = geoH*scale;
+  const offX = (W-drawW)/2, offY = (H-drawH)/2; // center in container
+  const x = offX + ((lng-lngMin)*cosLat)*scale;
+  const y = offY + ((latMax-lat))*scale;
+  return [x, y];
 }
 
 const IND_OUTLINE=[[41.761,-84.805],[41.761,-84.807],[41.728,-84.807],[41.696,-84.807],[41.696,-85.193],[41.696,-85.420],[41.759,-85.654],[41.759,-86.049],[41.759,-86.399],[41.744,-86.522],[41.693,-86.700],[41.647,-86.850],[41.611,-87.048],[41.590,-87.202],[41.590,-87.264],[41.638,-87.317],[41.638,-87.425],[41.520,-87.425],[41.520,-87.532],[40.750,-87.529],[39.827,-87.532],[39.462,-87.532],[39.108,-87.532],[38.983,-87.610],[38.885,-87.717],[38.766,-87.807],[38.633,-87.867],[38.485,-87.949],[38.400,-87.995],[38.243,-87.905],[38.105,-87.783],[37.958,-87.610],[37.910,-87.483],[37.902,-87.323],[37.914,-87.140],[37.955,-86.980],[38.013,-86.822],[38.058,-86.610],[38.070,-86.415],[38.043,-86.203],[38.031,-86.048],[38.070,-85.895],[38.153,-85.760],[38.240,-85.635],[38.291,-85.478],[38.302,-85.310],[38.377,-85.166],[38.487,-85.100],[38.622,-85.075],[38.766,-84.964],[38.878,-84.871],[38.995,-84.820],[39.108,-84.826],[39.243,-84.860],[39.373,-84.821],[39.487,-84.807],[39.599,-84.807],[39.706,-84.807],[39.823,-84.807],[39.933,-84.807],[40.048,-84.807],[40.163,-84.807],[40.259,-84.807],[40.374,-84.807],[40.489,-84.807],[40.605,-84.807],[40.720,-84.807],[40.833,-84.805],[40.949,-84.805],[41.061,-84.805],[41.177,-84.805],[41.293,-84.805],[41.408,-84.805],[41.524,-84.805],[41.640,-84.805],[41.761,-84.805]];
