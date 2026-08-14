@@ -759,6 +759,12 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
 .city-count-btn{background:var(--panel,#141c2e);color:var(--paper-faint,#8a94a6);border:1px solid var(--line,#2b3852);border-radius:4px;padding:2px 7px;font-family:var(--font-mono,monospace);font-size:10px;cursor:pointer;line-height:1.3;transition:all .12s}
 .city-count-btn:hover{color:var(--paper,#e6e9ef);border-color:#8C7635}
 .city-count-btn.active{background:#8C7635;color:#0E1626;border-color:#8C7635;font-weight:700}
+
+.followup-flag{margin:6px 0 2px;font-family:var(--font-mono,monospace);font-size:11px}
+.followup-flag .ff-none{color:var(--paper-faint,#6B7590)}
+.followup-flag .ff-upcoming{color:#7CA3D6}
+.followup-flag .ff-due{color:#E0A94A;font-weight:600}
+.followup-flag .ff-overdue{color:#D9736A;font-weight:700}
 </style>
 </head>
 <body>
@@ -896,6 +902,7 @@ tr.row-due{box-shadow:inset 2px 0 0 var(--brass);}
             <th data-key="license_status">License <span class="arrow"></span></th>
             <th data-key="owner_name">Owner <span class="arrow"></span></th>
             <th data-key="owner_phone">Phone <span class="arrow"></span></th>
+            <th data-key="last_contact">Last contact <span class="arrow"></span></th>
             <th data-key="next_followup">Follow-up <span class="arrow"></span></th>
             <th data-key="parcel_id">Parcel ID <span class="arrow"></span></th>
           </tr>
@@ -2038,6 +2045,14 @@ function getFilteredParks(){
       if(ab!==bb) return (ab-bb)*(STATE.sortDir===-1?1:-1);
       return ((b.sf_score||0)-(a.sf_score||0))*(STATE.sortDir===-1?1:-1);
     }
+    if(STATE.sortKey==='last_contact'){
+      // empty (never contacted) sorts to the bottom regardless of direction feel;
+      // YYYY-MM-DD sorts lexically so string compare is correct
+      const al=lastContactDate(a)||'', bl=lastContactDate(b)||'';
+      if(al===bl) return 0;
+      if(!al) return 1; if(!bl) return -1;
+      return (al<bl?-1:1)*STATE.sortDir;
+    }
     let av=a[STATE.sortKey], bv=b[STATE.sortKey];
     if(['pads','sf_score','years_held','last_sale_price','assessed_value'].indexOf(STATE.sortKey)>-1){
       av=parseNum(av); bv=parseNum(bv);
@@ -2121,6 +2136,7 @@ function renderTable(){
       <td><span class="status-pill lic-${p.license_status}"><span class="dot"></span>${escHtml(p.license_status)}</span></td>
       <td>${escHtml(p.owner_name||p.owner_business||'—')}</td>
       <td class="mono">${p.owner_phone?`<a href="tel:${escAttr(p.owner_phone)}" onclick="event.stopPropagation()">${escHtml(p.owner_phone)}</a>`:'—'}</td>
+      <td class="mono">${(()=>{const lc=lastContactDate(p);return lc?escHtml(lc):'—';})()}</td>
       <td class="mono">${p.next_followup?escHtml(p.next_followup):'—'}</td>
       <td class="mono parcel-cell">${p.parcel_id
         ? `<span class="parcel-id conf-${escAttr(p.match_confidence||'')}" data-copy="${escAttr(p.parcel_id)}" title="${escHtml(p.match_confidence||'')} confidence — click to copy">${escHtml(p.parcel_id)}</span>`
@@ -2219,6 +2235,8 @@ function openDetailModal(id){
     <div class="section-divider">Contact log <button class="btn btn-brass btn-sm" id="logCallBtn">+ Log contact</button></div>
     <div class="log-list" id="logList">${renderContactLog(p.contact_log)}</div>
 
+    <div id="followupFlag" class="followup-flag">${renderFollowupFlag(p)}</div>
+
     <div class="section-divider">Ownership</div>
     <div class="field-grid">
       ${ro('Owner', escHtml(p.owner_name))}
@@ -2289,6 +2307,9 @@ function openDetailModal(id){
 
   document.getElementById('addNoteBtn').onclick=()=>addNote(id);
   document.getElementById('logCallBtn').onclick=()=>logContact(id);
+  { const fu=document.getElementById('f_followup'); const pk=STATE.parks.find(x=>x.id===id);
+    if(fu&&pk) fu.addEventListener('change', ()=>{ pk.next_followup=fu.value;
+      const ff=document.getElementById('followupFlag'); if(ff) ff.innerHTML=renderFollowupFlag(pk); }); }
   document.getElementById('deleteBtn').onclick=()=>{
     if(confirm('Remove '+p.park_name+'?')){
       p._deleted = true; touch(p);           // tombstone, so merge won't restore it
@@ -2297,6 +2318,26 @@ function openDetailModal(id){
   };
   document.getElementById('saveDetailBtn').onclick=()=>saveDetailModal(id);
   document.getElementById('detailModalOverlay').classList.remove('hidden');
+}
+
+function renderFollowupFlag(p){
+  const d = p.next_followup;
+  if(!d) return `<span class="ff-none">No follow-up scheduled</span>`;
+  const today = new Date().toISOString().slice(0,10);
+  const lc = lastContactDate(p);
+  const lcTxt = lc ? ` · last contact ${escHtml(lc)}` : '';
+  if(d < today)  return `<span class="ff-due ff-overdue">⚑ Follow-up overdue — ${escHtml(d)}${lcTxt}</span>`;
+  if(d === today)return `<span class="ff-due">⚑ Follow-up due today — ${escHtml(d)}${lcTxt}</span>`;
+  return `<span class="ff-upcoming">◷ Follow-up set for ${escHtml(d)}${lcTxt}</span>`;
+}
+
+function lastContactDate(p){
+  const log = Array.isArray(p.contact_log) ? p.contact_log : [];
+  if(!log.length) return '';
+  // entries are appended in order; newest = max date string (YYYY-MM-DD sorts lexically)
+  let best = '';
+  for(const e of log){ if(e && e.date && e.date > best) best = e.date; }
+  return best;
 }
 
 function renderContactLog(log){
@@ -2323,6 +2364,7 @@ function logContact(id){
   p.contacted=true; touch(p);
   if(p.status==='prospect') p.status='contacted';
   document.getElementById('logList').innerHTML=renderContactLog(p.contact_log);
+  { const ff=document.getElementById('followupFlag'); if(ff) ff.innerHTML=renderFollowupFlag(p); }
   const sel=document.getElementById('f_status'); if(sel) sel.value=p.status;
   scheduleSave(); showToast('Contact logged');
 }
